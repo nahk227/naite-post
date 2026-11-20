@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>나이테 우체국</title>
+  <meta name="theme-color" content="#c8412d">
+  <meta name="description" content="당신의 나이테에 다른 세대의 답장을. 고민을 쓰면 다른 세대의 누군가가 답장을 보내요.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="demo-banner" class="demo-banner" hidden>데모 모드 · 이 브라우저 안에서만 저장돼요</div>
+
+  <header class="topbar">
+    <a href="#home" class="brand">🌳 나이테 우체국</a>
+    <button id="font-toggle" class="link-btn" type="button" aria-pressed="false">글씨 크게</button>
+  </header>
+
+  <main id="app" class="wrap" aria-live="polite">
+    <p class="center muted">불러오는 중…</p>
+  </main>
+
+  <footer class="footer">
+    <p>힘들 땐 혼자 견디지 마세요.<br>
+      <a href="tel:109" class="hotline">☎ 자살예방상담전화 109</a> (24시간)</p>
+    <p class="small muted">연락처·링크·SNS 아이디는 자동으로 가려져요 · 만 14세 이상 이용</p>
+  </footer>
+
+  <div id="modal" class="modal" hidden role="dialog" aria-modal="true"></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
