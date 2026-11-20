@@ -24,7 +24,7 @@
   async function load() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session || session.user.is_anonymous) return viewLogin();
-    document.getElementById('who').innerHTML = `${esc(session.user.email)} · <button data-a="logout">로그아웃</button>`;
+    document.getElementById('who').innerHTML = `${esc(session.user.email)} · <button data-a="pw">비밀번호 바꾸기</button> <button data-a="logout">로그아웃</button>`;
     if (!(await rpc('is_admin'))) return viewLogin('이 계정은 운영자 목록에 없어요.');
     const o = await rpc('admin_overview');
     const c = o.counts;
@@ -102,6 +102,14 @@
           return load();
         }
         case 'logout': await sb.auth.signOut(); document.getElementById('who').textContent = ''; return viewLogin();
+        case 'pw': {
+          const p1 = prompt('새 비밀번호 (10자 이상)'); if (!p1) return;
+          if (p1.length < 10) return toast('10자 이상으로 정해 주세요');
+          if (prompt('한 번 더 입력해 주세요') !== p1) return toast('두 비밀번호가 달라요');
+          const { error } = await sb.auth.updateUser({ password: p1 });
+          if (error) throw error;
+          return toast('비밀번호를 바꿨어요');
+        }
         case 'release': await rpc('admin_letter', { p_id: id, p_action: 'release' }); toast('배달을 시작했어요'); break;
         case 'close': if (!confirm('이 편지를 배달하지 않을까요?')) return; await rpc('admin_letter', { p_id: id, p_action: 'close' }); toast('배달을 멈췄어요'); break;
         case 'block': if (!confirm('이 이용자의 이용을 제한할까요?')) return; await rpc('admin_block', { p_user: id, p_blocked: true }); toast('이용을 제한했어요'); break;
