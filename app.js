@@ -3,6 +3,7 @@
   'use strict';
 
   const CFG = window.NAITE_CONFIG || {};
+  window.NaiteScene = window.NaiteScene || { setMode() {}, burst() {} };
 
   // ------------------------------------------------------------------
   // 상수
@@ -23,6 +24,24 @@
     '누구에게도 말 못 한 이야기, 여기서는 괜찮아요.',
     '다른 세대의 생각이 궁금한 고민이 있나요?',
   ];
+  const HEADLINES = [
+    '열아홉의 고민에<br><em>예순아홉</em>이 답장합니다',
+    '서른의 불안에<br><em>일흔의 여유</em>가 도착합니다',
+    '엄마 나이의 고민에<br><span class="alt">딸 나이</span>가 답장합니다',
+    '퇴사 고민엔<br><em>은퇴한 선배</em>의 한마디',
+    '아버지의 스마트폰 고민에<br><span class="alt">스물둘</span>이 답장합니다',
+  ];
+  let headlineTimer = null;
+  function rotateHeadline() {
+    clearInterval(headlineTimer);
+    let i = 0;
+    headlineTimer = setInterval(() => {
+      const el = document.getElementById('headline');
+      if (!el) { clearInterval(headlineTimer); return; }
+      el.classList.add('swap');
+      setTimeout(() => { i = (i + 1) % HEADLINES.length; el.innerHTML = HEADLINES[i]; el.classList.remove('swap'); }, 500);
+    }, 4200);
+  }
   const ERRORS = {
     daily_limit: '오늘은 편지를 3통까지 보낼 수 있어요. 내일 다시 보내 주세요.',
     blocked: '이용이 제한된 계정이에요.',
@@ -282,11 +301,12 @@
   // ------------------------------------------------------------------
   function viewOnboarding() {
     const { age, gender } = state.ob;
-    render(`<section class="center">
-      <div class="hero-icon" aria-hidden="true">📮</div>
-      <h1>나이테 우체국</h1>
-      <p class="lead">고민을 쓰면, 다른 세대의 누군가가 답장을 보내요.</p>
-    </section>
+    const editing = !!state.profile;
+    render(`${editing ? '<h1 class="page-title">나이대 바꾸기</h1>' : `<section class="hero">
+      <p class="eyebrow"><span class="live-dot"></span>가입 없이, 링크 하나로</p>
+      <h1 class="display">열아홉의 고민에<br><em>예순아홉</em>이 답장합니다</h1>
+      <p class="lead">모르는 사람, 하지만 먼저 그 길을 걸어간 사람.<br>다른 세대에게 고민을 부치면 느리지만 진심 어린 답장이 돌아와요.</p>
+    </section>`}
     <section class="card">
       <h2>나이대를 알려 주세요</h2>
       <p class="muted">다른 세대와 편지를 잇는 데만 써요. 이름이나 연락처는 묻지 않아요.</p>
@@ -304,22 +324,44 @@
   // 화면: 홈
   // ------------------------------------------------------------------
   async function viewHome() {
-    render(`<section class="center">
-      <div class="hero-icon" aria-hidden="true">📮</div>
-      <h1>나이테 우체국</h1>
-      <p class="lead">고민을 쓰면, 다른 세대의 누군가가 답장을 보내요.</p>
-      <p class="stats" id="stats">&nbsp;</p>
+    const kw = ['#이직', '#첫사랑', '#부모님', '#사춘기', '#노후', '#결혼', '#외로움', '#건강검진', '#꿈', '#돈', '#자취', '#은퇴', '#시험', '#육아'];
+    const kw2 = ['인생 선배에게', '젊은 세대에게', '느린 답장', '익명', '연락처 자동 가림', '고마워요 우표', '가입 없음', '다른 세대의 시선'];
+    const strip = (arr, sep) => { const s = arr.map((k) => `<span>${esc(k)}</span>`).join(`<span>${sep}</span>`); return s + `<span>${sep}</span>` + s + `<span>${sep}</span>`; };
+    render(`<section class="hero">
+      <p class="eyebrow"><span class="live-dot"></span>지금 우체국 문이 열려 있어요</p>
+      <h1 class="display" id="headline">${HEADLINES[0]}</h1>
+      <p class="lead">고민을 부치면, 나와 <b>다른 세대</b>의 누군가가 답장을 보내요.</p>
+      <div class="stats-pill" id="stats">📮 우체국 소식을 불러오는 중…</div>
     </section>
+
     <nav class="menu">
-      <a class="menu-btn primary" href="#write"><span class="mi">✉️</span><span><b>고민 보내기</b><small>다른 세대에게 털어놓기</small></span></a>
-      <a class="menu-btn" href="#answer"><span class="mi">✍️</span><span><b>답장 쓰기</b><small>누군가의 고민에 답하기</small></span></a>
-      <a class="menu-btn" href="#inbox"><span class="mi">📬</span><span><b>내 편지함 <em id="badge" class="badge" hidden></em></b><small>받은 답장 보기</small></span></a>
+      <a class="menu-btn primary tilt" href="#write"><span class="mi">✉️</span><span class="mt"><b>고민 보내기</b><small>다른 세대에게 털어놓기</small></span><span class="go">→</span></a>
+      <a class="menu-btn green tilt" href="#answer"><span class="mi">✍️</span><span class="mt"><b>답장 쓰기</b><small>누군가의 고민에 내 세대의 경험을</small></span><span class="go">→</span></a>
+      <a class="menu-btn tilt" href="#inbox"><span class="mi">📬</span><span class="mt"><b>내 편지함<em id="badge" class="badge" hidden></em></b><small>도착한 답장과 받은 우표</small></span><span class="go">→</span></a>
     </nav>
-    <p class="center small muted">나는 <b>${esc(AGE[state.profile.age_group])}</b> · <a href="#profile">바꾸기</a></p>`);
+
+    <div class="marquee" aria-hidden="true"><div class="marquee-track">${strip(kw, '✦')}</div></div>
+    <div class="marquee" aria-hidden="true"><div class="marquee-track">${strip(kw2, '🌳')}</div></div>
+
+    <h2 class="section-title">편지는 이렇게 오가요</h2>
+    <p class="section-sub">빠른 답 대신, 천천히 우려낸 진심</p>
+    <div class="steps">
+      <div class="step"><span class="step-no">1</span><div><b>고민을 부쳐요</b><span>"인생 선배에게", "젊은 세대에게", "아무에게나" 중에서 받는 사람을 골라요.</span></div></div>
+      <div class="step"><span class="step-no">2</span><div><b>다른 세대에게 배달돼요</b><span>이름도 연락처도 없이, 나이대만 함께 전해져요. 연락처는 자동으로 가려져요.</span></div></div>
+      <div class="step"><span class="step-no">3</span><div><b>느린 답장이 도착해요</b><span>몇 시간 뒤 답장이 도착하면, 고마운 마음을 우표로 전해요.</span></div></div>
+    </div>
+    <div class="gen-row" aria-label="함께하는 세대">${Object.values(AGE).map((a) => `<span class="gen">${a}</span>`).join('')}</div>
+
+    <p class="me-line">나는 <b>${esc(AGE[state.profile.age_group])}</b> · <a href="#profile">바꾸기</a></p>`);
+    rotateHeadline();
     try {
       const s = await api.stats();
       const el = $('#stats');
-      if (el) el.textContent = `지금까지 편지 ${s.letters}통 · 답장 ${s.replies}통이 오갔어요`;
+      if (el) {
+        el.innerHTML = s.letters > 0
+          ? `📮 지금까지 편지 <b>${s.letters}</b>통 · 답장 <b>${s.replies}</b>통이 오갔어요`
+          : '🌱 첫 편지를 기다리고 있어요. 첫 번째 주인공이 되어 주세요';
+      }
     } catch (e) { /* 숫자는 없어도 됨 */ }
     try {
       const mine = await api.myLetters();
@@ -336,7 +378,9 @@
     const d = state.draft; const my = state.profile.age_group;
     const targets = Object.entries(TARGETS).filter(([k]) => !(k === 'older' && my === 6) && !(k === 'younger' && my === 1));
     const prompt = PROMPTS[Math.floor(Math.random() * PROMPTS.length)];
-    render(`<section class="card">
+    render(`<h1 class="page-title">✉️ 고민 보내기</h1>
+    <p class="page-sub">다른 세대의 누군가가 천천히 읽고 답장해 드려요.</p>
+    <section class="card">
       <h2>1. 어떤 고민인가요?</h2>
       <div class="choices grid2">${Object.entries(TOPICS).map(([k, v]) =>
         `<button type="button" class="choice ${d.topic === k ? 'on' : ''}" data-action="w-topic" data-v="${k}">${v}</button>`).join('')}</div>
@@ -370,6 +414,7 @@
       const l = await api.sendLetter({ topic: d.topic, target: d.target, body: d.body.trim() });
       state.draft = { topic: null, target: null, body: '' };
       closeModal();
+      if (l.status !== 'held') window.NaiteScene.burst();
       viewSent(l.status === 'held');
     } catch (e) { closeModal(); toast(errMsg(e)); }
   }
@@ -419,7 +464,9 @@
     const sampleNote = l.is_sample
       ? '<p class="sample-note">🌱 나이테 우체국이 준비한 <b>연습 편지</b>예요. 실제 고민 편지가 도착하기 전까지 답장을 연습해 볼 수 있어요. 연습 답장은 저장되지 않아요.</p>'
       : '';
-    render(`${sampleNote}${letterPaper({ who: l.is_sample ? `연습 편지 · ${AGE[l.author_age]}의 고민` : `${AGE[l.author_age]}의 편지`, topic: l.topic, date: l.is_sample ? '' : dateLabel(l.created_at), body: l.body })}
+    render(`<h1 class="page-title">✍️ 답장 쓰기</h1>
+      <p class="page-sub">당신의 세대가 지나온 길이 누군가에겐 지도가 돼요.</p>
+      ${sampleNote}${letterPaper({ who: l.is_sample ? `연습 편지 · ${AGE[l.author_age]}의 고민` : `${AGE[l.author_age]}의 편지`, topic: l.topic, date: l.is_sample ? '' : dateLabel(l.created_at), body: l.body })}
       <section class="card">
         <h2>답장 쓰기</h2>
         <ul class="tips">
@@ -463,6 +510,7 @@
         </section>`);
       }
       await api.sendReply(l.id, body);
+      window.NaiteScene.burst();
       store.set('naite_reply_draft_' + l.id, '');
       state.claimed = null;
       render(`<section class="center pad">
@@ -496,7 +544,8 @@
           + (list.length ? list.map(replyItem).join('') : empty('아직 쓴 답장이 없어요.', '#answer', '답장 쓰기'));
       }
     } catch (e) { body = `<p class="center pad">${esc(errMsg(e))}</p>`; }
-    render(`<div class="tabs" role="tablist">
+    render(`<h1 class="page-title">📬 내 편지함</h1>
+      <div class="tabs" role="tablist">
         <button type="button" role="tab" class="tab ${tab === 'sent' ? 'on' : ''}" data-action="tab" data-v="sent">보낸 고민</button>
         <button type="button" role="tab" class="tab ${tab === 'replied' ? 'on' : ''}" data-action="tab" data-v="replied">내가 쓴 답장</button>
       </div>${body}`);
@@ -646,10 +695,32 @@
   // ------------------------------------------------------------------
   // 라우터
   // ------------------------------------------------------------------
+  // 스크롤하면 3D 배경을 은은하게 (글 읽기 편하게)
+  window.addEventListener('scroll', () => {
+    document.documentElement.classList.toggle('scrolled', window.scrollY > 260);
+  }, { passive: true });
+
+  // 메뉴 카드 입체 기울기 (마우스)
+  document.addEventListener('pointermove', (ev) => {
+    const card = ev.target.closest && ev.target.closest('.tilt');
+    document.querySelectorAll('.tilt').forEach((c) => {
+      if (c !== card) { c.style.setProperty('--rx', '0deg'); c.style.setProperty('--ry', '0deg'); }
+    });
+    if (!card || ev.pointerType === 'touch') return;
+    const r = card.getBoundingClientRect();
+    const x = (ev.clientX - r.left) / r.width; const y = (ev.clientY - r.top) / r.height;
+    card.style.setProperty('--ry', `${(x - 0.5) * 14}deg`);
+    card.style.setProperty('--rx', `${(0.5 - y) * 12}deg`);
+    card.style.setProperty('--mx', `${x * 100}%`);
+    card.style.setProperty('--my', `${y * 100}%`);
+  }, { passive: true });
+
   function route() {
     closeModal();
-    if (!state.profile) return viewOnboarding();
     const h = (location.hash || '#home').slice(1);
+    const isHome = !state.profile || h === 'home' || h === '';
+    window.NaiteScene.setMode(isHome ? 'home' : 'page');
+    if (!state.profile) return viewOnboarding();
     if (h === 'write') return viewWrite();
     if (h === 'answer') return viewAnswer();
     if (h === 'inbox') return viewInbox();
