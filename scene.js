@@ -4,7 +4,7 @@
  */
 (function () {
   'use strict';
-  const api = { setMode() {}, burst() {} };
+  const api = { setMode() {}, burst() {}, setRings() {} };
   window.NaiteScene = api;
 
   const canvas = document.getElementById('bg3d');
@@ -36,12 +36,14 @@
   // ---------- 텍스처 (캔버스로 직접 그림) ----------
   function rand(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 
-  function ringTexture() {
+  function ringTexture(highlight = 0) {
     const S = 1024, c = document.createElement('canvas'); c.width = c.height = S;
     const g = c.getContext('2d'); const r = rand(7); const C = S / 2;
     g.fillStyle = '#6b4325'; g.fillRect(0, 0, S, S);
     let radius = C - 6; let i = 0;
+    const glowRings = [];
     while (radius > 8) {
+      if (i > 0 && i <= highlight) glowRings.push(radius);
       const t = radius / C;
       g.beginPath();
       for (let a = 0; a <= Math.PI * 2 + 0.04; a += 0.04) {
@@ -57,6 +59,13 @@
       g.lineWidth = 1.5 + r() * 2.5; g.stroke();
       radius -= 9 + r() * 15; i++;
     }
+    // 내 나이테 (바깥쪽부터 금빛으로)
+    glowRings.forEach((rad, k) => {
+      g.beginPath(); g.arc(C, C, rad, 0, Math.PI * 2);
+      g.strokeStyle = k === 0 ? 'rgba(255,225,140,.95)' : 'rgba(255,200,100,.6)';
+      g.lineWidth = k === 0 ? 7 : 4; g.shadowColor = 'rgba(255,190,80,.9)'; g.shadowBlur = 18; g.stroke();
+    });
+    g.shadowBlur = 0;
     // 가장 바깥 껍질 테두리
     g.lineWidth = 14; g.strokeStyle = '#3b2414';
     g.beginPath(); g.arc(C, C, C - 7, 0, Math.PI * 2); g.stroke();
@@ -205,6 +214,16 @@
 
   api.setMode = (m) => { mode = modes[m] ? m : 'page'; document.documentElement.dataset.scene = mode; };
   api.burst = () => { spawnFlyer(); };
+  let ringsShown = -1;
+  api.setRings = (n) => {
+    const h = Math.max(0, Math.min(24, n | 0));
+    if (h === ringsShown) return;
+    ringsShown = h;
+    const top = stump.material[1];
+    const old = top.map; top.map = ringTexture(h); top.needsUpdate = true;
+    if (old) old.dispose();
+    if (h > 0) spawnRipple(1.8);
+  };
 
   // 시차 (마우스·기울기)
   const tilt = { x: 0, y: 0 }; const tiltS = { x: 0, y: 0 };

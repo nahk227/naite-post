@@ -13,6 +13,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="features.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="나이테 우체국">
 </head>
 <body>
   <canvas id="bg3d" aria-hidden="true"></canvas>
@@ -35,8 +40,7 @@
   </main>
 
   <footer class="footer">
-    <p>힘들 땐 혼자 견디지 마세요.<br>
-      <a href="tel:109" class="hotline">☎ 자살예방상담전화 109</a> (24시간)</p>
+    <p class="footer-links"><a href="#support">후원·문의</a> · <a href="#org">기관 우체통</a> · <a href="#terms">이용약관</a> · <a href="#privacy"><b>개인정보처리방침</b></a></p>
     <p class="small muted">연락처·링크·SNS 아이디는 자동으로 가려져요 · 만 14세 이상 이용</p>
   </footer>
 
@@ -47,6 +51,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="config.js"></script>
   <script src="scene.js"></script>
+  <script src="avatars.js"></script>
   <script src="app.js"></script>
+  <script src="features.js"></script>
 </body>
 </html>

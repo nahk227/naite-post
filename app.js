@@ -47,6 +47,9 @@
     blocked: '이용이 제한된 계정이에요.',
     not_your_letter: '이 편지는 이미 다른 분께 넘어갔어요. 다른 편지를 받아 주세요.',
     profile_required: '먼저 나이대를 알려 주세요.',
+    question_closed: '이 질문은 마감됐어요. 다음 질문을 기다려 주세요.',
+    org_not_found: '우체통 코드를 찾을 수 없어요. 다시 확인해 주세요.',
+    duplicate: '이미 답했어요. 질문 하나에 한 번만 답할 수 있어요.',
     'Anonymous sign-ins are disabled': '지금은 우체국 문을 여는 중이에요. 잠시 뒤 다시 와 주세요. (운영자: Supabase 익명 로그인을 켜 주세요)',
   };
 
@@ -121,7 +124,7 @@
       init() { return ok(db.profile); },
       saveProfile(p) { db.profile = { ...(db.profile || { id: db.me, stamps_received: 0 }), ...p }; save(); return ok(db.profile); },
       refreshProfile() { return ok(db.profile); },
-      sendLetter({ topic, target, body }) {
+      sendLetter({ topic, target, body, share_ok }) {
         const mine = db.letters.filter((l) => l.author_id === db.me && Date.now() - Date.parse(l.created_at) < 864e5);
         if (mine.length >= 3) return fail('daily_limit');
         const clean = maskContacts(body);
@@ -215,6 +218,7 @@
 
     return {
       mode: 'live',
+      sb,
       async init() {
         let { data: { session } } = await sb.auth.getSession();
         if (!session) {
@@ -239,7 +243,7 @@
         return l && l.id ? l : null;
       },
       async skipLetter(id) { must(await sb.rpc('skip_letter', { p_letter_id: id })); },
-      async sendReply(letterId, body) { must(await sb.from('replies').insert({ letter_id: letterId, body })); },
+      async sendReply(letterId, body, shareOk) { must(await sb.from('replies').insert({ letter_id: letterId, body, share_ok: !!shareOk })); },
       async practiceReply(letterId) { must(await sb.rpc('practice_reply', { p_letter_id: letterId })); },
       async myLetters() {
         const rows = must(await sb.from('letters').select('*, replies(*)')
@@ -275,6 +279,17 @@
   const seen = new Set(store.get('naite_seen_replies', []));
   const saveSeen = () => store.set('naite_seen_replies', [...seen]);
 
+  // 확장 기능(features.js)과 공유하는 연결부
+  const Naite = window.Naite = {
+    api, state, CFG, AGE, TOPICS, TARGETS, GENDER, CRISIS_RE, ERRORS,
+    $, esc, nl2br, store, dateLabel, errMsg,
+    render: (h) => render(h), toast: (m) => toast(m),
+    openModal: (h) => openModal(h), closeModal: () => closeModal(),
+    letterPaper: (o) => letterPaper(o), route: () => route(),
+    retrySendReply: () => { state.toneOk = true; closeModal(); return sendReply(); },
+    views: {}, publicViews: {}, homeExtras: [], bootHooks: [],
+  };
+
   // ------------------------------------------------------------------
   // 화면 공통
   // ------------------------------------------------------------------
@@ -288,9 +303,9 @@
   function closeModal() { $('#modal').hidden = true; $('#modal').innerHTML = ''; }
   const loading = (msg = '불러오는 중…') => render(`<p class="center muted pad">${esc(msg)}</p>`);
 
-  function letterPaper({ who, topic, date, body, cls = '' }) {
+  function letterPaper({ who, topic, date, body, cls = '', age }) {
     return `<article class="paper ${cls}">
-      <header class="paper-head"><span>${esc(who)}</span>${topic ? `<span class="tag">${esc(TOPICS[topic] || '')}</span>` : ''}</header>
+      <header class="paper-head">${age && window.NaiteAvatar ? `<span class="pa-av">${window.NaiteAvatar(age, null)}</span>` : ''}<span>${esc(who)}</span>${topic ? `<span class="tag">${esc(TOPICS[topic] || '')}</span>` : ''}</header>
       <div class="paper-body">${nl2br(body)}</div>
       ${date ? `<footer class="paper-foot">${esc(date)}</footer>` : ''}
     </article>`;
@@ -307,17 +322,46 @@
       <h1 class="display">열아홉의 고민에<br><em>예순아홉</em>이 답장합니다</h1>
       <p class="lead">모르는 사람, 하지만 먼저 그 길을 걸어간 사람.<br>다른 세대에게 고민을 부치면 느리지만 진심 어린 답장이 돌아와요.</p>
     </section>`}
-    <section class="card">
-      <h2>나이대를 알려 주세요</h2>
-      <p class="muted">다른 세대와 편지를 잇는 데만 써요. 이름이나 연락처는 묻지 않아요.</p>
-      <div class="choices grid3">${Object.entries(AGE).map(([k, v]) =>
-        `<button type="button" class="choice ${age === +k ? 'on' : ''}" data-action="ob-age" data-v="${k}">${v}</button>`).join('')}</div>
-      <h2>성별 <span class="muted small">(선택)</span></h2>
-      <div class="choices grid3">${Object.entries(GENDER).map(([k, v]) =>
-        `<button type="button" class="choice ${gender === k ? 'on' : ''}" data-action="ob-gender" data-v="${k}">${v}</button>`).join('')}</div>
-      <button type="button" class="btn primary block" data-action="ob-save" ${age ? '' : 'disabled'}>시작하기</button>
-      <p class="small muted center">만 14세 이상만 이용할 수 있어요.</p>
+    <section class="ob-card">
+      <div class="ob-stage">
+        <div class="ob-preview ${age ? 'on' : ''}" id="ob-preview">${obPreview()}</div>
+        <div class="ob-bubble" id="ob-bubble">${obBubble()}</div>
+      </div>
+      <h2 class="ob-title">어떤 세대의 우체부인가요?</h2>
+      <p class="ob-sub">다른 세대와 편지를 잇는 데만 써요. 이름이나 연락처는 묻지 않아요.</p>
+      <div class="ob-ages">${Object.entries(AGE).map(([k, v]) =>
+        `<button type="button" class="ob-age ${age === +k ? 'on' : ''}" data-action="ob-age" data-v="${k}">
+          <span class="ob-age-av">${avatar(+k, gender)}</span><b>${v}</b><small>${AGE_NICK[k]}</small></button>`).join('')}</div>
+      <h3 class="ob-q">성별 <span>(선택)</span></h3>
+      <div class="ob-genders">${Object.entries(GENDER).map(([k, v]) =>
+        `<button type="button" class="ob-gender ${gender === k ? 'on' : ''}" data-action="ob-gender" data-v="${k}">${{ f: '👩', m: '👨', x: '🙂' }[k]} ${v}</button>`).join('')}</div>
+      <button type="button" class="btn primary block ob-go" data-action="ob-save" ${age ? '' : 'disabled'}>🌳 ${editing ? '이렇게 바꿀게요' : '우체국 들어가기'}</button>
+      <p class="small center ob-note">만 14세 이상만 이용할 수 있어요.</p>
     </section>`);
+  }
+
+  const AGE_NICK = { 1: '꿈 많은 새싹', 2: '출발선의 청춘', 3: '한창 달리는 중', 4: '든든한 기둥', 5: '노련한 선배', 6: '인생 고수' };
+  const avatar = (a, g, title) => (window.NaiteAvatar ? window.NaiteAvatar(a, g, { title }) : '📮');
+  function obPreview() {
+    const { age, gender } = state.ob;
+    return age ? avatar(age, gender, `${AGE[age]} 우체부`) : '<div class="ob-mystery">?</div>';
+  }
+  function obBubble() {
+    const { age } = state.ob;
+    return age ? `안녕하세요! <b>${AGE_NICK[age]}</b>, ${AGE[age]} 우체부예요 ✉️` : '나이대를 고르면<br>나만의 우체부가 나타나요!';
+  }
+  // 선택할 때 화면을 다시 그리지 않고 제자리에서 바꿈 (스크롤 유지)
+  function updateOb() {
+    const { age, gender } = state.ob;
+    document.querySelectorAll('.ob-age').forEach((b) => {
+      b.classList.toggle('on', +b.dataset.v === age);
+      b.querySelector('.ob-age-av').innerHTML = avatar(+b.dataset.v, gender);
+    });
+    document.querySelectorAll('.ob-gender').forEach((b) => b.classList.toggle('on', b.dataset.v === gender));
+    const p = $('#ob-preview');
+    if (p) { p.innerHTML = obPreview(); p.classList.toggle('on', !!age); p.classList.remove('pop'); void p.offsetWidth; p.classList.add('pop'); }
+    const bub = $('#ob-bubble'); if (bub) bub.innerHTML = obBubble();
+    const go = $('[data-action=ob-save]'); if (go) go.disabled = !age;
   }
 
   // ------------------------------------------------------------------
@@ -339,6 +383,7 @@
       <a class="menu-btn green tilt" href="#answer"><span class="mi">✍️</span><span class="mt"><b>답장 쓰기</b><small>누군가의 고민에 내 세대의 경험을</small></span><span class="go">→</span></a>
       <a class="menu-btn tilt" href="#inbox"><span class="mi">📬</span><span class="mt"><b>내 편지함<em id="badge" class="badge" hidden></em></b><small>도착한 답장과 받은 우표</small></span><span class="go">→</span></a>
     </nav>
+    <div id="home-extras"></div>
 
     <div class="marquee" aria-hidden="true"><div class="marquee-track">${strip(kw, '✦')}</div></div>
     <div class="marquee" aria-hidden="true"><div class="marquee-track">${strip(kw2, '🌳')}</div></div>
@@ -352,7 +397,8 @@
     </div>
     <div class="gen-row" aria-label="함께하는 세대">${Object.values(AGE).map((a) => `<span class="gen">${a}</span>`).join('')}</div>
 
-    <p class="me-line">나는 <b>${esc(AGE[state.profile.age_group])}</b> · <a href="#profile">바꾸기</a></p>`);
+    <p class="me-line"><span class="me-av">${avatar(state.profile.age_group, state.profile.gender)}</span>나는 <b>${esc(AGE_NICK[state.profile.age_group])}, ${esc(AGE[state.profile.age_group])} 우체부</b> · <a href="#profile">바꾸기</a></p>`);
+    Naite.homeExtras.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
     rotateHeadline();
     try {
       const s = await api.stats();
@@ -398,6 +444,7 @@
         </div>
       </div>
       <p class="small muted">연락처·링크·SNS 아이디는 자동으로 가려져요. 받는 분은 내 나이대만 알 수 있어요.</p>
+      <label class="consent"><input type="checkbox" id="w-share" ${d.share ? 'checked' : ''}> 답장과 함께 <b>'오늘의 편지'</b>에 익명으로 소개돼도 좋아요 <span class="muted">(선택)</span></label>
       <button type="button" class="btn primary block" data-action="w-send">📮 우체통에 넣기</button>
     </section>`);
     setupMic($('#w-body'));
@@ -411,7 +458,8 @@
     if (d.body.trim().length < 10) return toast('조금만 더 적어 주세요. (10자 이상)');
     if (!force && CRISIS_RE.test(d.body)) return showCrisis();
     try {
-      const l = await api.sendLetter({ topic: d.topic, target: d.target, body: d.body.trim() });
+      const shareBox = $('#w-share');
+      const l = await api.sendLetter({ topic: d.topic, target: d.target, body: d.body.trim(), share_ok: !!(shareBox && shareBox.checked) });
       state.draft = { topic: null, target: null, body: '' };
       closeModal();
       if (l.status !== 'held') window.NaiteScene.burst();
@@ -420,14 +468,11 @@
   }
 
   function showCrisis() {
-    openModal(`<h2>많이 힘드시죠</h2>
-      <p>편지에 마음이 아주 무거운 말이 담겨 있어요. 지금 바로 이야기를 들어 줄 분이 있어요.</p>
-      <a class="btn primary block" href="tel:109">☎ 109에 전화하기 (24시간)</a>
-      <p class="small muted">자살예방상담전화 109 · 무료 · 비밀 보장</p>
-      <hr>
-      <p class="small">편지도 보낼 수 있어요. 이 편지는 운영자가 먼저 읽고 조심스럽게 전해 드려요.</p>
-      <button type="button" class="btn block" data-action="crisis-send">편지도 보낼게요</button>
-      <button type="button" class="link-btn block" data-action="modal-close">다시 쓸게요</button>`);
+    openModal(`<h2>🌿 마음이 많이 무거우셨군요</h2>
+      <p>여기까지 털어놓아 주셔서 고마워요. 편지는 운영자가 먼저 정성껏 읽고 전해 드릴게요.</p>
+      <p class="small muted">답장을 기다리기 힘들 만큼 지금 이야기를 나누고 싶다면, 언제든 전화로 들어 줄 분이 있어요. <a href="tel:109">마음 상담 전화 연결</a> (무료·비밀 보장)</p>
+      <button type="button" class="btn primary block" data-action="crisis-send">편지 보내기</button>
+      <button type="button" class="link-btn block" data-action="modal-close">조금 더 고쳐 쓸게요</button>`);
   }
 
   function viewSent(held) {
@@ -435,7 +480,7 @@
       <div class="post-anim" aria-hidden="true"><span class="env">✉️</span><span class="box">📮</span></div>
       <h2>편지를 넣었어요</h2>
       ${held
-        ? '<p>이 편지는 운영자가 먼저 읽고 조심스럽게 전해 드릴게요.<br>힘들 땐 언제든 <a href="tel:109">☎ 109</a>로 전화해 주세요.</p>'
+        ? '<p>이 편지는 운영자가 먼저 정성껏 읽고 전해 드릴게요.<br>답장이 오는 동안 따뜻한 차 한 잔 하며 쉬어 가세요 🍵</p>'
         : '<p>다른 세대의 누군가에게 배달되고 있어요.<br>답장이 도착하면 <b>내 편지함</b>에서 볼 수 있어요.</p>'}
       <div class="stack">
         <a class="btn primary block" href="#answer">기다리는 동안 남의 고민에 답장하기</a>
@@ -466,7 +511,7 @@
       : '';
     render(`<h1 class="page-title">✍️ 답장 쓰기</h1>
       <p class="page-sub">당신의 세대가 지나온 길이 누군가에겐 지도가 돼요.</p>
-      ${sampleNote}${letterPaper({ who: l.is_sample ? `연습 편지 · ${AGE[l.author_age]}의 고민` : `${AGE[l.author_age]}의 편지`, topic: l.topic, date: l.is_sample ? '' : dateLabel(l.created_at), body: l.body })}
+      ${sampleNote}${letterPaper({ who: l.is_sample ? `연습 편지 · ${AGE[l.author_age]}의 고민` : `${AGE[l.author_age]}의 편지`, topic: l.topic, date: l.is_sample ? '' : dateLabel(l.created_at), body: l.body, age: l.author_age })}
       <section class="card">
         <h2>답장 쓰기</h2>
         <ul class="tips">
@@ -481,6 +526,7 @@
             <span class="small muted" id="r-count">${draft.length} / 2000</span>
           </div>
         </div>
+        ${l.is_sample ? '' : `<label class="consent"><input type="checkbox" id="r-share"> 고민 쓴 분도 동의하면 <b>'오늘의 편지'</b>에 익명으로 소개돼도 좋아요 <span class="muted">(선택)</span></label>`}
         <button type="button" class="btn primary block" data-action="r-send">✉️ 답장 보내기</button>
         <div class="row-between">
           <button type="button" class="link-btn" data-action="r-skip">다른 편지 받기</button>
@@ -509,7 +555,13 @@
           </div>
         </section>`);
       }
-      await api.sendReply(l.id, body);
+      if (!state.toneOk && Naite.toneCheck) {
+        const issue = Naite.toneCheck(body);
+        if (issue) { Naite.showToneModal(issue); return; }
+      }
+      state.toneOk = false;
+      const rs = $('#r-share');
+      await api.sendReply(l.id, body, !!(rs && rs.checked));
       window.NaiteScene.burst();
       store.set('naite_reply_draft_' + l.id, '');
       state.claimed = null;
@@ -545,6 +597,7 @@
       }
     } catch (e) { body = `<p class="center pad">${esc(errMsg(e))}</p>`; }
     render(`<h1 class="page-title">📬 내 편지함</h1>
+      <div class="inbox-tools"><a class="chip-link" href="#book">📖 내 편지 책</a><a class="chip-link" href="#notify">🔔 답장 알림</a><a class="chip-link" href="#account">🔐 편지함 지키기</a></div>
       <div class="tabs" role="tablist">
         <button type="button" role="tab" class="tab ${tab === 'sent' ? 'on' : ''}" data-action="tab" data-v="sent">보낸 고민</button>
         <button type="button" role="tab" class="tab ${tab === 'replied' ? 'on' : ''}" data-action="tab" data-v="replied">내가 쓴 답장</button>
@@ -562,11 +615,12 @@
     else if (l.status === 'answered') status = '<p class="status">✉️ 답장이 오고 있어요 · 곧 도착해요</p>';
     else status = '<p class="status">📮 답장해 줄 분을 기다리고 있어요</p>';
 
-    const reply = l.reply ? `${letterPaper({ who: `${AGE[l.reply.author_age]}의 답장`, date: dateLabel(l.reply.deliver_at), body: l.reply.body, cls: 'reply' })}
+    const reply = l.reply ? `${letterPaper({ who: `${AGE[l.reply.author_age]}의 답장`, date: dateLabel(l.reply.deliver_at), body: l.reply.body, cls: 'reply', age: l.reply.author_age })}
       <div class="row-between">
         ${l.reply.thanked
           ? '<span class="small">💌 고마워요 우표를 보냈어요</span>'
           : `<button type="button" class="btn small primary" data-action="thank" data-v="${l.reply.id}">💌 고마워요 우표 보내기</button>`}
+        <button type="button" class="btn small" data-action="share-card" data-v="${l.reply.id}">📸 답장 카드</button>
         <button type="button" class="link-btn danger" data-action="report-reply" data-v="${l.reply.id}">신고</button>
       </div>` : '';
 
@@ -579,7 +633,7 @@
   function replyItem(r) {
     const l = r.letter || {};
     return `<div class="thread">
-      ${letterPaper({ who: `${AGE[l.author_age] || ''}의 편지`, topic: l.topic, body: l.body || '', cls: 'mine' })}
+      ${letterPaper({ who: `${AGE[l.author_age] || ''}의 편지`, topic: l.topic, body: l.body || '', cls: 'mine', age: l.author_age })}
       ${letterPaper({ who: '내가 쓴 답장', date: dateLabel(r.created_at), body: r.body, cls: 'reply' })}
       <p class="status">${r.thanked ? '💌 고마워요 우표를 받았어요' : '답장을 전했어요'}</p>
     </div>`;
@@ -624,8 +678,8 @@
     if (!el) return;
     const a = el.dataset.action; const v = el.dataset.v;
     switch (a) {
-      case 'ob-age': state.ob.age = +v; viewOnboarding(); break;
-      case 'ob-gender': state.ob.gender = state.ob.gender === v ? null : v; viewOnboarding(); break;
+      case 'ob-age': state.ob.age = +v; updateOb(); break;
+      case 'ob-gender': state.ob.gender = state.ob.gender === v ? null : v; updateOb(); break;
       case 'ob-save':
         if (!state.ob.age) return;
         el.disabled = true;
@@ -671,6 +725,7 @@
   document.addEventListener('input', (ev) => {
     const t = ev.target;
     if (t.id === 'w-body') { state.draft.body = t.value; const c = $('#w-count'); if (c) c.textContent = `${t.value.length} / 2000`; }
+    if (t.id === 'w-share') state.draft.share = t.checked;
     if (t.id === 'r-body') {
       const c = $('#r-count'); if (c) c.textContent = `${t.value.length} / 2000`;
       if (state.claimed) store.set('naite_reply_draft_' + state.claimed.id, t.value);
@@ -720,7 +775,9 @@
     const h = (location.hash || '#home').slice(1);
     const isHome = !state.profile || h === 'home' || h === '';
     window.NaiteScene.setMode(isHome ? 'home' : 'page');
+    if (Naite.publicViews[h]) { window.NaiteScene.setMode('page'); return Naite.publicViews[h](); }
     if (!state.profile) return viewOnboarding();
+    if (Naite.views[h]) return Naite.views[h]();
     if (h === 'write') return viewWrite();
     if (h === 'answer') return viewAnswer();
     if (h === 'inbox') return viewInbox();
@@ -733,6 +790,7 @@
     if (api.mode === 'demo') $('#demo-banner').hidden = false;
     try { state.profile = await api.init(); }
     catch (e) { return render(`<p class="center pad">${esc(errMsg(e))}</p>`); }
+    for (const h of Naite.bootHooks) { try { await h(); } catch (e) { console.error(e); } }
     route();
   })();
 })();
