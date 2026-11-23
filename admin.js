@@ -12,13 +12,21 @@
   function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2200); }
   async function rpc(name, args) { const { data, error } = await sb.rpc(name, args || {}); if (error) throw error; return data; }
 
+  const lastEmail = () => { try { return localStorage.getItem('naite-admin-email') || ''; } catch (e) { return ''; } };
   function viewLogin(msg) {
+    const em = lastEmail();
     app.innerHTML = `<section class="panel login"><h2>🔐 운영자 로그인</h2>
       ${msg ? `<p class="meta">${esc(msg)}</p>` : ''}
-      <label>이메일</label><input id="em" type="email" autocomplete="username">
-      <label>비밀번호</label><input id="pw" type="password" autocomplete="current-password">
-      <p><button class="amber" data-a="login">로그인</button></p>
+      <form id="login-form">
+        <label>이메일</label><input id="em" type="email" autocomplete="username" value="${esc(em)}">
+        <label>비밀번호</label><input id="pw" type="password" autocomplete="current-password">
+        <p><button class="amber" type="submit">로그인</button></p>
+      </form>
+      <p class="meta">한 번 로그인하면 로그아웃하기 전까지 이 브라우저에서는 다시 묻지 않아요.</p>
       <p class="meta">운영자 계정은 Supabase 대시보드 → Authentication → Users → Add user 에서 만들고, 운영자 목록(admins)에 이메일이 등록돼 있어야 해요.</p></section>`;
+    // 이메일이 기억돼 있으면 비밀번호 칸으로 바로
+    const box = document.getElementById(em ? 'pw' : 'em');
+    if (box) box.focus();
   }
 
   async function load() {
@@ -96,11 +104,6 @@
     const a = b.dataset.a; const id = b.dataset.id;
     try {
       switch (a) {
-        case 'login': {
-          const { error } = await sb.auth.signInWithPassword({ email: document.getElementById('em').value.trim(), password: document.getElementById('pw').value });
-          if (error) return viewLogin('로그인 정보를 확인해 주세요.');
-          return load();
-        }
         case 'logout': await sb.auth.signOut(); document.getElementById('who').textContent = ''; return viewLogin();
         case 'pw': {
           const p1 = prompt('새 비밀번호 (10자 이상)'); if (!p1) return;
@@ -140,6 +143,17 @@
       }
       load();
     } catch (e) { console.error(e); toast('오류: ' + (e.message || e)); }
+  });
+
+  // 로그인 (엔터로도 됨). 이메일은 이 브라우저에 기억해 두고 다음엔 비밀번호만 입력
+  document.addEventListener('submit', async (ev) => {
+    if (ev.target.id !== 'login-form') return;
+    ev.preventDefault();
+    const email = document.getElementById('em').value.trim();
+    const { error } = await sb.auth.signInWithPassword({ email, password: document.getElementById('pw').value });
+    if (error) return viewLogin('로그인 정보를 확인해 주세요.');
+    try { localStorage.setItem('naite-admin-email', email); } catch (e) { /* 저장 불가 */ }
+    load();
   });
 
   load();
